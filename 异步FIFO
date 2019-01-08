@@ -1,0 +1,63 @@
+module Asyn_FIFO(data_out, full, empty, data_in, wen, wclk, wrst,ren, rclk, rrst);
+parameter datasize = 8; 
+parameter addrsize = 4;
+
+input [datasize-1:0]data_in;
+input wen,ren,wclk,rclk,wrst,rrst;
+output [datasize-1:0]data_out;
+output empty,full;
+
+reg empty,full;
+wire [datasize-1:0]data_out;
+
+wire [addrsize-1:0]raddr,waddr;        //
+wire [addrsize:0]rbinnext,wbinnext,rptrnext,wptrnext;
+wire empty_val,full_val;
+reg  [addrsize:0]rbin,wbin,rptr,wptr,rptr1,rptr2,wptr1,wptr2;
+reg  [addrsize-1:0]memory[0:(1<<addrsize)-1];
+
+//双口RAM
+assign data_out=memory[raddr];
+always @(posedge wclk)
+begin if(wen&&!full) memory[waddr]<=data_in;end
+
+//同步wptr指针
+always @(posedge rclk or negedge rrst)
+begin if(!rrst) {rptr2,rptr1}<=0;
+      else {rptr2,rptr1}<={rptr1,wptr};
+end 
+
+//同步rptr指针
+always @(posedge wclk or negedge wrst)
+begin if(!wrst) {wptr2,wptr1}<=0;
+      else {wptr2,wptr1}<={wptr1,rptr};
+end 
+
+//产生raddr信号和empty信号
+always @(posedge rclk or negedge rrst)
+begin if(!rrst) {rbin,rptr}<=0;
+      else {rbin,rptr}<={rbinnext,rptrnext};
+end
+assign raddr=rbin[addrsize-1:0];
+assign rbinnext=rbin+(ren&&~empty);
+assign rptrnext=(rbinnext>>1)^rbinnext;  //生成raddr
+assign empty_val=(rptrnext==rptr2);
+always @(posedge rclk or negedge rrst)
+begin if(!rrst) empty<=1;
+      else empty<=empty_val;
+end
+
+//产生waddr信号和full信号
+always @(posedge wclk or negedge wrst)
+begin if(!wrst) {wbin,wptr}<=0;
+      else {wbin,wptr}<={wbinnext,wptrnext};
+end
+assign waddr=wbin[addrsize-1:0];
+assign wbinnext=wbin+(wen&&~full);
+assign wptrnext=(wbinnext>>1)^wbinnext;  //生成waddr
+assign full_val=(wptrnext=={~wptr2[addrsize:addrsize-1],wptr2[addrsize-2:0]});
+always @(posedge wclk or negedge wrst)
+begin if(!rrst) full<=0;
+      else full<=full_val;
+end
+endmodule
